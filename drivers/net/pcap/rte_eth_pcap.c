@@ -4,11 +4,17 @@
  * All rights reserved.
  */
 
+#define _GNU_SOURCE
+
 #include <time.h>
 
 #include <net/if.h>
 
 #include <pcap.h>
+#ifdef RTE_LIBRTE_PMD_PCAP_COMP
+#include <stdio.h>
+#include <zlib.h>
+#endif
 
 #include <rte_cycles.h>
 #include <rte_ethdev_driver.h>
@@ -104,6 +110,32 @@ static int eth_pcap_logtype;
 #define PMD_LOG(level, fmt, args...) \
 	rte_log(RTE_LOG_ ## level, eth_pcap_logtype, \
 		"%s(): " fmt "\n", __func__, ##args)
+
+#ifdef RTE_LIBRTE_PMD_PCAP_COMP
+static ssize_t
+gzip_cookie_read(void *cookie, char *buf, size_t size)
+{
+	return gzread((gzFile)cookie, (voidp)buf, (unsigned)size);
+}
+
+static ssize_t
+gzip_cookie_write(void *cookie, const char *buf, size_t size)
+{
+	return gzwrite((gzFile)cookie, (voidpc)buf, (unsigned)size);
+}
+
+static int
+gzip_cookie_close(void *cookie)
+{
+	return gzclose((gzFile)cookie);
+}
+
+static cookie_io_functions_t gzip_rw_funcs = {
+	.read = gzip_cookie_read,
+	.write = gzip_cookie_write,
+	.close = gzip_cookie_close
+};
+#endif
 
 static int
 eth_pcap_rx_jumbo(struct rte_mempool *mb_pool, struct rte_mbuf *mbuf,
@@ -370,6 +402,21 @@ open_single_iface(const char *iface, pcap_t **pcap)
 	return 0;
 }
 
+#ifdef RTE_LIBRTE_PMD_PCAP_COMP
+static char mybuf[1024];
+static pcap_dumper_t *
+pcap_dump_open_comp(pcap_t *p, const char *fname)
+{
+	gzFile	zf;
+	FILE	*fp;
+
+	sprintf(mybuf, "%s.gz", fname);
+	zf = gzopen(mybuf, "w");
+	fp = fopencookie(zf, "w", gzip_rw_funcs);
+	return pcap_dump_fopen(p, fp);
+}
+#endif
+
 static int
 open_single_tx_pcap(const char *pcap_filename, pcap_dumper_t **dumper)
 {
@@ -387,7 +434,11 @@ open_single_tx_pcap(const char *pcap_filename, pcap_dumper_t **dumper)
 	}
 
 	/* The dumper is created using the previous pcap_t reference */
+#ifdef RTE_LIBRTE_PMD_PCAP_COMP
+	*dumper = pcap_dump_open_comp(tx_pcap, pcap_filename);
+#else
 	*dumper = pcap_dump_open(tx_pcap, pcap_filename);
+#endif
 	if (*dumper == NULL) {
 		pcap_close(tx_pcap);
 		PMD_LOG(ERR, "Couldn't open %s for writing.",

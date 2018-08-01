@@ -414,7 +414,12 @@ CONFIG_RTE_LIBRTE_PMD_NULL=y
 #
 # Compile software PMD backed by PCAP files
 #
-CONFIG_RTE_LIBRTE_PMD_PCAP=n
+CONFIG_RTE_LIBRTE_PMD_PCAP=y
+
+#
+# Compile software PMD backed by PCAP files with gzip
+#
+CONFIG_RTE_LIBRTE_PMD_PCAP_COMP=y
 
 #
 # Compile example software rings based PMD
