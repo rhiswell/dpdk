@@ -797,6 +797,8 @@ main(int argc, char **argv)
 	int diag;
 	int ret;
 	int i;
+	struct pdump_tuples *pt;
+	uint16_t portid;
 
 	char c_flag[] = "-c1";
 	char n_flag[] = "-n4";
@@ -839,6 +841,17 @@ main(int argc, char **argv)
 	dump_packets();
 
 	cleanup_pdump_resources();
+
+	/* gracefully stop all vdevs to close all IO streams explicitly */
+	for (i = 0; i < num_tuples; i++) {
+		pt = &pdump_t[i];
+		/* only care about rx-dev */
+		/* FIXME: doesn't handle TXRX */
+		portid = (pt->dir == RTE_PDUMP_FLAG_TX) ? pt->tx_vdev_id : pt->rx_vdev_id;
+		rte_eth_dev_stop(portid);
+		rte_eth_dev_close(portid);
+	}
+
 	/* dump debug stats */
 	print_pdump_stats();
 
